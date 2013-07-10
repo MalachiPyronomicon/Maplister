@@ -1,0 +1,16 @@
+#compiled files
+*.smx
+*.exe
+*.o
+
+#plugin directory
+addons/sourcemod/plugins/
+
+#vim files
+*.sw*
+
+#image files
+*.gif
+*.tga
+*.jpg
+*.tif
