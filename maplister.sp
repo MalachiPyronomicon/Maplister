@@ -2,7 +2,10 @@
 
 #pragma semicolon 1
 
-#define PLUGIN_VERSION "1.6.1"
+// 1.6.2 --- This is modified to save to mapall.txt instead of maplist.txt
+// 1.6.3 --- This is modified to add in the current list of stock maps
+// 1.6.4 --- Added support for downloads/maps dir.
+#define PLUGIN_VERSION "1.6.4"
 
 new String:LEFT4DEAD_DIR[] = "left4dead";
 
@@ -69,7 +72,7 @@ public OnPluginEnd()
 public OnMapStart()
 {
     if (g_writeOnMapChange)
-        MapLister(Output_File, "maplist.txt", 0, "");
+        MapLister(Output_File, "mapall.txt", 0, "");
 }
 
 public auto_maplistChanged(Handle:convar, const String:oldValue[],
@@ -174,10 +177,6 @@ MapLister(OutputType:type, const String:path[], client, const String:filter[])
             return false;
     }
     
-    new Handle:mapdir = OpenDirectory("maps/");
-    if (mapdir == INVALID_HANDLE)
-        return false;
-
     decl String:name[PLATFORM_MAX_PATH];
     new Handle:array = CreateArray(PLATFORM_MAX_PATH/4);
     new FileType:filetype;
@@ -189,7 +188,13 @@ MapLister(OutputType:type, const String:path[], client, const String:filter[])
     decl String:fileMap[PLATFORM_MAX_PATH];
     if (g_hExcludeMaps != INVALID_HANDLE)
         FileSeek(g_hExcludeMaps, SEEK_SET, 0);
-    
+ 
+
+ //	Handle the maps directory
+    new Handle:mapdir = OpenDirectory("maps/");
+    if (mapdir == INVALID_HANDLE)
+        return false;
+
     for (new i=0; i<2; i++)
     {
         while (ReadDirEntry(mapdir, name, sizeof(name), filetype))
@@ -239,6 +244,65 @@ MapLister(OutputType:type, const String:path[], client, const String:filter[])
     
     CloseHandle(mapdir);
     
+	
+	
+ //	Handle the download/maps directory
+    mapdir = INVALID_HANDLE;
+    mapdir = OpenDirectory("download/maps/");
+    if (mapdir == INVALID_HANDLE)
+        return false;
+
+    for (new i=0; i<2; i++)
+    {
+        while (ReadDirEntry(mapdir, name, sizeof(name), filetype))
+        {
+            if (filetype != FileType_File)
+                continue;
+            
+            namelen = strlen(name) - 4;
+            if (StrContains(name, ".bsp", false) != namelen ||
+                (g_bIsL4D && StrContains(name, ".vpk", false) != namelen))
+                continue;
+            
+            name[namelen] = '\0';
+            
+            if (strncmp(filter, name, filterlen) != 0)
+                exclude = true;
+            else if (g_hExcludeMaps != INVALID_HANDLE)
+            {
+                while (ReadFileLine(g_hExcludeMaps, fileMap, sizeof(fileMap)))
+                {
+                    if (strncmp(fileMap, name, strlen(name)) == 0)
+                    {
+                        exclude = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (!exclude)
+                PushArrayString(array, name);
+            
+            exclude = false;
+            
+            if (g_hExcludeMaps != INVALID_HANDLE)
+                FileSeek(g_hExcludeMaps, SEEK_SET, 0);
+        }
+        
+        if (!g_bIsL4D)
+            break;
+        
+        CloseHandle(mapdir);
+        
+        mapdir = OpenDirectory("addons/");
+        if (mapdir == INVALID_HANDLE)
+            break;
+    }
+    
+    CloseHandle(mapdir);
+    
+	
+	
     SortADTArray(array, Sort_Ascending, Sort_String);
     
     new i;
