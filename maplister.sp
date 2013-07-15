@@ -6,7 +6,8 @@
 // 1.6.3 --- This is modified to add in the current list of stock maps
 // 1.6.4 --- Added support for downloads/maps dir.
 // 1.6.5 --- Tabs cleanup, reorganization of MapLister func.
-#define PLUGIN_VERSION "1.6.5"
+// 1.6.6 --- Seperate output by stock/custom.
+#define PLUGIN_VERSION "1.6.6"
 
 new String:LEFT4DEAD_DIR[] = "left4dead";
 
@@ -241,13 +242,29 @@ MapLister(OutputType:type, const String:path[], client, const String:filter[])
 			mapdir = INVALID_HANDLE;
 
 		}
-		
 
+		
 		// Change map directories for steampipe update, L4D1
 		switch (i)
 		{
 			case 0:
 			{
+				// This is where we sort the entire array
+				SortADTArray(array, Sort_Ascending, Sort_String);
+				
+				// Output the sorted map list from the array to console/file
+				for (new j=0; j < GetArraySize(array); j++)
+				{
+					GetArrayString(array, j, name, sizeof(name));
+					
+					if (type == Output_Console)
+						PrintToConsole(client, "%s", name);
+					else
+						WriteFileLine(maplist, "%s", name);
+				}
+				
+				ClearArray(array);
+
 				mapdir = OpenDirectory("download/maps/");
 			}
 			case 1:
@@ -259,41 +276,48 @@ MapLister(OutputType:type, const String:path[], client, const String:filter[])
 			}
 			case 2:
 			{
+				// This is where we sort the entire array
+				SortADTArray(array, Sort_Ascending, Sort_String);
+				
+				// Output the sorted map list from the array to console/file
+				for (new j=0; j < GetArraySize(array); j++)
+				{
+					GetArrayString(array, j, name, sizeof(name));
+					
+					if (type == Output_Console)
+						PrintToConsole(client, "%s", name);
+					else
+						WriteFileLine(maplist, "%s", name);
+				}
+				
+//				ClearArray(array);
+
 			}
 			default:
 			{
 				/* will run if no case matched */
 				/* we should never get here... */
-				CloseHandle(mapdir);
+//				CloseHandle(mapdir);
 			}
 		}				
 	}
 	
-
-	
-	// This is where we sort the entire array
-	SortADTArray(array, Sort_Ascending, Sort_String);
-	
-	// Output the map list from the array
-	for (new i=0; i < GetArraySize(array); i++)
-	{
-		GetArrayString(array, i, name, sizeof(name));
-		
-		if (type == Output_Console)
-			PrintToConsole(client, "%s", name);
-		else
-			WriteFileLine(maplist, "%s", name);
-	}
 	
 	// Cleanup
 	if (type == Output_File)
+	{
 		CloseHandle(maplist);
+	}
 	else
 	{
 		if (GetArraySize(array) > 0)
+		{
 			ReplyToCommand(client, "[Maplister] Map list printed to console.");
+		}
 		else
+		{
 			ReplyToCommand(client, "[Maplister] No maps found.");
+		}
 	}
 	
 	return true;
