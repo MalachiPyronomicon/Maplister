@@ -1,23 +1,26 @@
-#include <sourcemod>
-
-#pragma semicolon 1
-
 // 1.6.2 --- This is modified to save to mapall.txt instead of maplist.txt
 // 1.6.3 --- This is modified to add in the current list of stock maps
 // 1.6.4 --- Added support for downloads/maps dir.
 // 1.6.5 --- Tabs cleanup, reorganization of MapLister func.
 // 1.6.6 --- Seperate output by stock/custom.
-#define PLUGIN_VERSION "1.6.6"
+// 1.6.7 --- use defines for files, change default back to maplist.txt for compatibility, add cvar sm_maplist_file to allow changing the def file we output to.
+
+
+#include <sourcemod>
+
+#pragma semicolon 1
+
+
+#define PLUGIN_VERSION "1.6.7"
+#define DEFAULT_MAP_FILE "maplist.txt"
+#define DEFAULT_CONFIG_FILE "configs/maplister_excludes.cfg"
+
 
 new String:LEFT4DEAD_DIR[] = "left4dead";
-
-public Plugin:myinfo = {
-	name = "Maplister",
-	author = "theY4Kman",
-	description = "Uses the maps in the /maps (or /addons for L4D) folder to write or display a maplist.",
-	version = PLUGIN_VERSION,
-	url = "http://y4kstudios.com/sourcemod/"
-};
+new bool:g_writeOnMapChange;
+new Handle:g_hExcludeMaps = INVALID_HANDLE;
+new bool:g_bIsL4D = false;
+new Handle:g_hCvarDefaultMapFile = INVALID_HANDLE;
 
 enum OutputType
 {
@@ -25,10 +28,15 @@ enum OutputType
 	Output_File = 1,
 };
 
-new bool:g_writeOnMapChange;
-new Handle:g_hExcludeMaps = INVALID_HANDLE;
 
-new bool:g_bIsL4D = false;
+public Plugin:myinfo = {
+	name = "Maplister",
+	author = "theY4Kman",
+	description = "Reads the /maps and /download/maps (or /addons for L4D) folders to write/display a maplist.",
+	version = PLUGIN_VERSION,
+	url = "http://y4kstudios.com/sourcemod/"
+};
+
 
 public OnPluginStart()
 {
@@ -38,12 +46,14 @@ public OnPluginStart()
 	if (strncmp(gamedir, LEFT4DEAD_DIR, sizeof(LEFT4DEAD_DIR), false) == 0)
 		g_bIsL4D = true;
 	
-	/* Everyone is allowed to use sm_maplist
-	* But only Admins can use sm_writemaplist
-	*/
+	
+	// Everyone is allowed to use sm_maplist
+	// But only Admins can use sm_writemaplist
 	RegConsoleCmd("sm_maplist", MapListCmd);
 	RegAdminCmd("sm_writemaplist", WriteMapListCmd, ADMFLAG_GENERIC);
 
+	
+	// Should this handle be global instead?
 	new Handle:writeOnMapChange = CreateConVar("sm_auto_maplist", "1",
 		"If set to 1 will write a new maplist whenever the map changes.");
 
@@ -53,12 +63,25 @@ public OnPluginStart()
 	HookConVarChange(writeOnMapChange, auto_maplistChanged);
 	g_writeOnMapChange = GetConVarBool(writeOnMapChange);
 
+	
+	// CVar to set which file we use
+	g_hCvarDefaultMapFile = CreateConVar("sm_maplist_file", DEFAULT_MAP_FILE,
+		"Sets the default file we use when writing out the list of maps.");
+
+	if (g_hCvarDefaultMapFile == INVALID_HANDLE)
+		g_hCvarDefaultMapFile = FindConVar("sm_maplist_file");
+
+// We prolly don't need to watch this for changes		
+//	HookConVarChange(g_hCvarDefaultMapFile, auto_maplistChanged);
+//	g_hCvarDefaultMapFile = GetConVarBool(g_hCvarDefaultMapFile);
+
+
 	CreateConVar("sm_maplister_version", PLUGIN_VERSION, 
 		"The version of the SourceMod plugin MapLister, by theY4Kman",
 		FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_PLUGIN);
 	
 	decl String:excludeMaps[PLATFORM_MAX_PATH];
-	BuildPath(Path_SM, excludeMaps, sizeof(excludeMaps), "configs/maplister_excludes.cfg");
+	BuildPath(Path_SM, excludeMaps, sizeof(excludeMaps), DEFAULT_CONFIG_FILE);
 	
 	g_hExcludeMaps = OpenFile(excludeMaps, "r");
 
@@ -74,7 +97,13 @@ public OnPluginEnd()
 public OnMapStart()
 {
 	if (g_writeOnMapChange)
-		MapLister(Output_File, "mapall.txt", 0, "");
+	{
+		decl String:sDefaultMapFile[PLATFORM_MAX_PATH];
+
+		GetConVarString(g_hCvarDefaultMapFile, sDefaultMapFile, sizeof(sDefaultMapFile));
+		
+		MapLister(Output_File, sDefaultMapFile, 0, "");
+	}
 }
 
 public auto_maplistChanged(Handle:convar, const String:oldValue[],
@@ -153,9 +182,13 @@ public Action:WriteMapListCmd(client, args)
 	filter[0] = '\0';
 	
 	if (args >= 1)
+	{
 		GetCmdArg(1, filename, sizeof(filename));
+	}
 	else
-		strcopy(filename, sizeof(filename), "maplist.txt");
+	{
+		GetConVarString(g_hCvarDefaultMapFile, filename, sizeof(filename));
+	}
 	
 	if (args >= 2)
 		GetCmdArg(2, filter, sizeof(filter));
