@@ -4,6 +4,7 @@
 // 1.6.5 --- Tabs cleanup, reorganization of MapLister func.
 // 1.6.6 --- Seperate output by stock/custom.
 // 1.6.7 --- use defines for files, change default back to maplist.txt for compatibility, add cvar sm_maplist_file to allow changing the def file we output to.
+// 1.6.8 --- use cfg file for setting default map file
 
 
 #include <sourcemod>
@@ -11,16 +12,20 @@
 #pragma semicolon 1
 
 
-#define PLUGIN_VERSION "1.6.7"
+#define PLUGIN_VERSION "1.6.8"
 #define DEFAULT_MAP_FILE "maplist.txt"
-#define DEFAULT_CONFIG_FILE "configs/maplister_excludes.cfg"
+#define DEFAULT_EXCLUDES_FILE "configs/maplister_excludes.cfg"
+#define DEFAULT_CONFIG_FILE "configs/maplister.cfg"
 
 
 new String:LEFT4DEAD_DIR[] = "left4dead";
 new bool:g_writeOnMapChange;
 new Handle:g_hExcludeMaps = INVALID_HANDLE;
 new bool:g_bIsL4D = false;
-new Handle:g_hCvarDefaultMapFile = INVALID_HANDLE;
+//new Handle:g_hCvarDefaultMapFile = INVALID_HANDLE;
+new String:g_sDefaultMapFile[PLATFORM_MAX_PATH];
+
+
 
 enum OutputType
 {
@@ -63,28 +68,49 @@ public OnPluginStart()
 	HookConVarChange(writeOnMapChange, auto_maplistChanged);
 	g_writeOnMapChange = GetConVarBool(writeOnMapChange);
 
-	
-	// CVar to set which file we use
-	g_hCvarDefaultMapFile = CreateConVar("sm_maplist_file", DEFAULT_MAP_FILE,
-		"Sets the default file we use when writing out the list of maps.");
-
-	if (g_hCvarDefaultMapFile == INVALID_HANDLE)
-		g_hCvarDefaultMapFile = FindConVar("sm_maplist_file");
-
-// We prolly don't need to watch this for changes		
-//	HookConVarChange(g_hCvarDefaultMapFile, auto_maplistChanged);
-//	g_hCvarDefaultMapFile = GetConVarBool(g_hCvarDefaultMapFile);
-
 
 	CreateConVar("sm_maplister_version", PLUGIN_VERSION, 
 		"The version of the SourceMod plugin MapLister, by theY4Kman",
 		FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_PLUGIN);
+		
 	
+	// Open excludes file
 	decl String:excludeMaps[PLATFORM_MAX_PATH];
-	BuildPath(Path_SM, excludeMaps, sizeof(excludeMaps), DEFAULT_CONFIG_FILE);
-	
+	BuildPath(Path_SM, excludeMaps, sizeof(excludeMaps), DEFAULT_EXCLUDES_FILE);
 	g_hExcludeMaps = OpenFile(excludeMaps, "r");
 
+	
+	// Open cfg file
+	decl String:sConfigFile[PLATFORM_MAX_PATH];
+	new Handle:hConfigFile = INVALID_HANDLE;
+	BuildPath(Path_SM, sConfigFile, sizeof(sConfigFile), DEFAULT_CONFIG_FILE);
+	hConfigFile = OpenFile(sConfigFile, "r");
+
+	// Read first line
+	if (hConfigFile != INVALID_HANDLE)
+	{
+		FileSeek(hConfigFile, SEEK_SET, 0);
+		ReadFileLine(hConfigFile, g_sDefaultMapFile, sizeof(g_sDefaultMapFile));
+		
+		if (strlen(g_sDefaultMapFile) > 1)
+		{
+			PrintToServer("[MapLister] File read from config is %s", g_sDefaultMapFile);
+		}
+		else
+		{
+			strcopy(g_sDefaultMapFile, sizeof(g_sDefaultMapFile), DEFAULT_MAP_FILE);
+			PrintToServer("[MapLister] Error reading from config file");
+		}
+	
+		CloseHandle(hConfigFile);
+	}
+	else
+	{
+		strcopy(g_sDefaultMapFile, sizeof(g_sDefaultMapFile), DEFAULT_MAP_FILE);
+		PrintToServer("[MapLister] Error finding config file");
+	}
+
+	
 	PrintToServer("[Maplister] Loaded");
 }
 
@@ -98,11 +124,8 @@ public OnMapStart()
 {
 	if (g_writeOnMapChange)
 	{
-		decl String:sDefaultMapFile[PLATFORM_MAX_PATH];
-
-		GetConVarString(g_hCvarDefaultMapFile, sDefaultMapFile, sizeof(sDefaultMapFile));
 		
-		MapLister(Output_File, sDefaultMapFile, 0, "");
+		MapLister(Output_File, g_sDefaultMapFile, 0, "");
 	}
 }
 
@@ -187,7 +210,8 @@ public Action:WriteMapListCmd(client, args)
 	}
 	else
 	{
-		GetConVarString(g_hCvarDefaultMapFile, filename, sizeof(filename));
+		strcopy(filename, sizeof(filename), g_sDefaultMapFile);
+//		GetConVarString(g_hCvarDefaultMapFile, filename, sizeof(filename));
 	}
 	
 	if (args >= 2)
